@@ -6,47 +6,36 @@ public class Spider : MonoBehaviour
 {
     public float controlSpeedForward = 0.1f;
     public float controlSpeedTurning = 0.1f;
-
-    public List<GameObject> legs = new List<GameObject>();
-    public List<Transform> targets = new List<Transform>();
+    private SpiderLeg[] legs;
+    private List<Transform> targets = new List<Transform>();
     public float stepDistance = 4f;
     public float spiderHeight = 2f;
-
-    float[] offsets = {1, -1, 1, -1, 1, -1};
-    int layerMask = 1 << 8; // Walkable
-
+    public float targetDistance = 2f;
+    public LayerMask walkableMask = 1 << 8;
+    private int numLegs;
+    
     // Start is called before the first frame update
     void Start()
     {
-        // Legs and targets must be in the same sequence
-        for(int i=0; i<12; i++)
+        legs = GetComponentsInChildren<SpiderLeg>();
+        numLegs = legs.Length;
+        foreach (SpiderLeg leg in legs)
         {
-            if(i < 6)
-            {
-                legs.Add(this.transform.GetChild(i).gameObject);
-            }
-            else
-            {
-                targets.Add(this.transform.GetChild(i).transform);
-            }
+            GameObject newTarget = new GameObject("Target (" + leg.name + ")");
+            newTarget.transform.SetParent(transform);
+            Vector3 pushOutTargetFromCenter = (leg.transform.position - transform.position) * targetDistance;
+            pushOutTargetFromCenter.x *= 0.5f;
+            newTarget.transform.position = leg.transform.position + pushOutTargetFromCenter;
+            targets.Add(newTarget.transform);
         }
 
         // Casting rays towards targets and moving legs to the respective coordinate
-        for(int i=0; i<6; i++)
+        for(int i=0; i< numLegs; i++)
         {
-            float movePos;
-            if(i % 2 == 0)
-                movePos = 1f;
-            else
-                movePos = -1f;
-
-            // Casting a ray towards target i
             RaycastHit hit;
-            if(Physics.Raycast(targets[i].position, -transform.up, out hit, Mathf.Infinity, layerMask))
+            if(Physics.Raycast(targets[i].position, -transform.up, out hit, Mathf.Infinity, walkableMask))
             {
-                legs[i].GetComponent<SpiderLeg>().SetTargetPos(hit.point + transform.forward * offsets[i]);
-                // Changing the offset for next iteration for alternating step walk
-                offsets[i] *= -1;
+                legs[i].SetTargetPos(hit.point + transform.forward * (i % 2));
             }
         }
     }
@@ -55,22 +44,18 @@ public class Spider : MonoBehaviour
     void FixedUpdate()
     {
         Vector3 upVector = Vector3.zero;
-
         // Casting rays towards targets and moving legs to the respective coordinate
-        for(int i=0; i<6; i++)
+        for(int i=0; i<numLegs; i++)
         {
             // Casting a ray towards target i
             RaycastHit hit;
-            if(Physics.Raycast(targets[i].position, -transform.up, out hit, Mathf.Infinity, layerMask))
+            if(Physics.Raycast(targets[i].position, -transform.up, out hit, Mathf.Infinity, walkableMask))
             {
                 upVector += hit.normal;
-                float distance = Vector3.Distance(hit.point, legs[i].GetComponent<SpiderLeg>().targetPos);
-
+                float distance = Vector3.Distance(hit.point, legs[i].targetPos);
                 if (distance > stepDistance)
                 {
-                    legs[i].GetComponent<SpiderLeg>().SetTargetPos(hit.point + transform.forward * offsets[i]);
-                    // Changing the offset for next iteration for alternating step walk
-                    offsets[i] *= -1;
+                    legs[i].SetTargetPos(hit.point + transform.forward * (i%2));
                 }
             }
         }
@@ -80,44 +65,24 @@ public class Spider : MonoBehaviour
 
         // Placing the spider body with respect to feet
         Vector3 averagePos = Vector3.zero;
-        for(int i=0; i<6; i++)
+        for(int i=0; i<numLegs; i++)
         {
-            averagePos += legs[i].GetComponent<SpiderLeg>().targetPos;
+            averagePos += legs[i].targetPos;
         }
-        averagePos /= 6f;
+
+        averagePos /= numLegs;
         
         // Rotating the body wrt to the foot placement normals
         Vector3 forwardVector = Vector3.Cross(upVector, -this.transform.right);
-        this.transform.position = Vector3.Lerp(this.transform.position, averagePos + upVector * spiderHeight, Time.deltaTime);
+        transform.position = Vector3.Lerp(transform.position, averagePos + upVector * spiderHeight, Time.deltaTime);
         Quaternion targetRot = Quaternion.LookRotation(forwardVector);
-        this.transform.rotation = Quaternion.Slerp(this.transform.rotation, targetRot, 5f * Time.deltaTime);
+        transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 5f * Time.deltaTime);
     }
 
-    // TO CONTROL WITH WASD
+    // TO CONTROL WITH WASD / GAMEPAD / ARROWS 
     void Update()
     {
-        // Up
-        if(Input.GetKey(KeyCode.W))
-        {
-            transform.position += transform.forward * controlSpeedForward * Time.deltaTime;
-        }
-
-        // Down
-        if(Input.GetKey(KeyCode.S))
-        {
-            transform.position -= transform.forward * controlSpeedForward * Time.deltaTime;
-        }
-
-        // Left
-        if(Input.GetKey(KeyCode.A))
-        {
-            transform.Rotate(0, -controlSpeedTurning * Time.deltaTime, 0);
-        }
-
-        // Right
-        if(Input.GetKey(KeyCode.D))
-        {
-            transform.Rotate(0, controlSpeedTurning * Time.deltaTime, 0);
-        }
+        transform.position += transform.forward * controlSpeedForward * Time.deltaTime * Input.GetAxis("Vertical");
+        transform.Rotate(0, controlSpeedTurning * Time.deltaTime * Input.GetAxis("Horizontal"), 0);
     }
 }
